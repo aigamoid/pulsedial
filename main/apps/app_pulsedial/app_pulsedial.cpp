@@ -251,8 +251,8 @@ void AppPulseDial::onRunning()
     auto& btnA = GetHAL().btnA;
     auto& btnB = GetHAL().btnB;
     if (btnA.wasClicked() && !btnB.isPressed()) togglePlay();
-    // A を 5 秒長押し: Spotify からログアウト (別のアカウントや Client ID でログインし直すとき)
-    if (btnA.pressedFor(5000) && !btnB.isPressed() && !_a_logout) {
+    // A を 10 秒長押し: Spotify からログアウト (別のアカウントや Client ID でログインし直すとき。誤操作しないように長め)
+    if (btnA.pressedFor(10000) && !btnB.isPressed() && !_a_logout) {
         _a_logout = true;
         _client.command(spotify::Cmd::Logout);
     }

@@ -103,7 +103,7 @@ private:
     uint32_t _down_ms      = 0;
     int _down_x = 0, _down_y = 0, _last_x = 0, _last_y = 0;
     bool _b_held           = false;
-    bool _a_logout         = false;  // A を 5 秒長押しでログアウトした (離すまで 1 回だけ)
+    bool _a_logout         = false;  // A を 10 秒長押しでログアウトした (離すまで 1 回だけ)
     int _main_prio         = -1;  // ボタンを読むタスクの元の優先度 (開いている間は上げる)  // B を長押しした (そのあとのクリックの回数は使わない)
     uint32_t _next_time_ms = 0;
 

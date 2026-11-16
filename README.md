@@ -106,7 +106,7 @@ Python 3.9+). Enter the Client ID, and the IP and PIN shown on the StopWatch.
 | Swipe left / right | Next / previous |
 | Swipe up / down | Volume (if the playing device allows it) |
 | Hold A + B | Back to the menu |
-| Hold A for 5 s | Log out of Spotify (to log in with another account or Client ID) |
+| Hold A for 10 s | Log out of Spotify (to log in with another account or Client ID) |
 
 ## Privacy and data
 
@@ -236,7 +236,7 @@ PC のスクリプト（`tools/spotify_login.py`）でもログインできま�
 | 左右にスワイプ | 次 / 前の曲 |
 | 上下にスワイプ | 音量（再生中の機器が対応していれば） |
 | A と B を同時に長押し | メニューに戻る |
-| A を 5 秒長押し | Spotify からログアウト（別のアカウントや Client ID でログインし直すとき） |
+| A を 10 秒長押し | Spotify からログアウト（別のアカウントや Client ID でログインし直すとき） |
 
 ### データの扱い
 
