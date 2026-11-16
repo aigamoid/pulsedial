@@ -283,6 +283,7 @@ void Client::stop()
     _next2.valid = false;
     _wantUri[0] = _shownArt[0] = _queueFor[0] = _uri[0] = 0;
     _pixOver = false;
+    _readyArt[0][0] = _readyArt[1][0] = _pixUrl[0] = 0;
     _next.valid = false;
     if (_cmds) vQueueDelete(_cmds);
     if (_done) vSemaphoreDelete(_done);
@@ -695,8 +696,43 @@ void Client::publishTrack(const char* uri, const char* title, const char* artist
         _snap.bpmSource    = kTempoNone;
     }
     ++_snap.trackSeq;
+    _snap.artPending = true;  // 本物のジャケットが出るまでマイクは待つ
     xSemaphoreGive(_lock);
+    // 覚えていたドット絵を、ジャケットの係を待たずにすぐ出す (係は先読みや ReccoBeats の途中のことがある)。
+    // 本物がもう展開ずみ (出ている・予備にある) なら、すぐ入れかわるので出さない (ちらつかないように)
+    bool ready = false;
+    if (_jobLock && artUrl && *artUrl) {
+        xSemaphoreTake(_jobLock, portMAX_DELAY);
+        ready = strcmp(_readyArt[0], artUrl) == 0 || strcmp(_readyArt[1], artUrl) == 0;
+        xSemaphoreGive(_jobLock);
+    }
+    if (!ready) showPixFor(artUrl);
     requestArt(uri, artUrl, true);
+}
+
+bool Client::showPixFor(const char* artUrl)
+{
+    if (!artUrl || !*artUrl) return false;
+    spviz::PixelArt pa;
+    if (!_mem.findPix(artUrl, &pa)) return false;
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    const bool already = strcmp(_pixUrl, artUrl) == 0 && _pixOver.load();
+    if (!already) {
+        _pixShow = pa;
+        ++_snap.pixSeq;
+        copyStr(_pixUrl, sizeof(_pixUrl), artUrl);
+    }
+    xSemaphoreGive(_lock);
+    _pixOver.store(true);
+    return true;
+}
+
+void Client::markReady()
+{
+    xSemaphoreTake(_jobLock, portMAX_DELAY);
+    copyStr(_readyArt[0], sizeof(_readyArt[0]), _shownArt);
+    copyStr(_readyArt[1], sizeof(_readyArt[1]), _spareW > 0 ? _spareUrl : "");
+    xSemaphoreGive(_jobLock);
 }
 
 void Client::fetchQueue()
@@ -897,6 +933,7 @@ bool Client::decodeArt(const uint8_t* jpg, size_t len, bool urgent, const char* 
     bool prog = false;
     _spareUrl[0] = 0;
     _spareW = _spareH = 0;
+    markReady();  // 予備は書きかわる
     if (!jpegSize(jpg, len, &jw, &jh, &prog)) return false;
     if (prog) {
         mclog::tagWarn(kTag, "art: progressive jpeg {}x{} (not supported)", jw, jh);
@@ -1055,6 +1092,7 @@ void Client::artRun()
                 if (jpg && !showPendingOther(j.art)) {
                     if (decodeArt(jpg, len, false, j.art)) {
                         copyStr(_spareUrl, sizeof(_spareUrl), j.art);
+                        markReady();
                         rememberPix(j.art);
                     }
                 }
@@ -1071,14 +1109,8 @@ void Client::artRun()
                 if (strcmp(j.art, _spareUrl) == 0 && _spareW > 0) {  // 先に読んであった (次の曲・ひとつ前の曲)
                     ok = true;
                 } else {
-                    spviz::PixelArt pa;
-                    if (_mem.findPix(j.art, &pa) && stillWanted(j.uri)) {  // 覚えていたドット絵を先に出す
+                    if (stillWanted(j.uri) && showPixFor(j.art)) {  // 覚えていたドット絵 (通信の係がもう出していれば、そのまま)
                         mclog::tagInfo(kTag, "art: showing remembered pixel art first");
-                        xSemaphoreTake(_lock, portMAX_DELAY);
-                        _pixShow = pa;
-                        ++_snap.pixSeq;
-                        xSemaphoreGive(_lock);
-                        _pixOver = true;
                     }
                     size_t len         = 0;
                     const uint8_t* jpg = loadJpeg(j.art, &len);
@@ -1089,6 +1121,7 @@ void Client::artRun()
                     if (!stillWanted(j.uri)) continue;
                     if (jpg && decodeArt(jpg, len, true, nullptr)) {
                         copyStr(_spareUrl, sizeof(_spareUrl), j.art);
+                        markReady();
                         rememberPix(j.art);
                         ok = true;
                     }
@@ -1110,16 +1143,25 @@ void Client::artRun()
                 if (!_spareUrl[0]) _spareW = _spareH = 0;
             }
             copyStr(_shownArt, sizeof(_shownArt), ok ? j.art : "");
+            markReady();
             _pixOver = false;
+            const bool wanted = stillWanted(j.uri);
             xSemaphoreTake(_lock, portMAX_DELAY);
             ++_snap.artSeq;
+            _pixUrl[0] = 0;
+            if (wanted) _snap.artPending = false;
             xSemaphoreGive(_lock);
-        } else if (_pixOver) {
-            // 絵は出ているが、その上に途中でやめた曲のドット絵が出たまま (前へ → すぐ次へ で、元の曲に戻ったとき): 出し直す
-            mclog::tagInfo(kTag, "art: back to the shown art, replacing pixel art");
-            _pixOver = false;
+        } else {
+            // 絵はもう出ている。その上にドット絵が出たまま (前へ → すぐ次へ で元の曲に戻った・通信の係が先に出した) なら出し直す
+            const bool over = _pixOver.exchange(false);
+            if (over) mclog::tagInfo(kTag, "art: back to the shown art, replacing pixel art");
+            const bool wanted = stillWanted(j.uri);
             xSemaphoreTake(_lock, portMAX_DELAY);
-            ++_snap.artSeq;
+            if (over) {
+                ++_snap.artSeq;
+                _pixUrl[0] = 0;
+            }
+            if (wanted) _snap.artPending = false;
             xSemaphoreGive(_lock);
         }
         if (isTrack && stillWanted(j.uri)) {
@@ -1261,10 +1303,14 @@ void Client::run()
                 }
             }
             startSetupServer();
-            char ip[40], pin[24];
-            snprintf(ip, sizeof(ip), "IP %s", _ip);
-            snprintf(pin, sizeof(pin), "PIN %d", _pin);
-            setState(NetState::NeedLogin, "Spotify setup", ip, pin);
+            if (_server) {
+                char ip[40], pin[24];
+                snprintf(ip, sizeof(ip), "IP %s", _ip);
+                snprintf(pin, sizeof(pin), "PIN %d", _pin);
+                setState(NetState::NeedLogin, "Spotify setup", ip, pin);
+            } else {  // 受け取りのサーバがまだ (作れなかった): 使えない PIN は出さない
+                setState(NetState::NeedLogin, "Spotify setup", "", "Starting setup…");
+            }
             vTaskDelay(pdMS_TO_TICKS(300));
             continue;
         }

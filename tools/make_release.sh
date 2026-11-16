@@ -12,6 +12,10 @@ cp build/bootloader/bootloader.bin "$OUT/bootloader.bin"
 cp build/partition_table/partition-table.bin "$OUT/partition-table.bin"
 cp build/ota_data_initial.bin "$OUT/ota_data_initial.bin"
 cp build/StopWatch-UserDemo.bin "$OUT/pulsedial.bin"
+# offsets from the build (so they follow partitions.csv)
+off() { printf '%d' "$(awk -v f="$1" '$2 == f {print $1}' build/flash_args)"; }
+BL=$(off bootloader/bootloader.bin); PT=$(off partition_table/partition-table.bin)
+OD=$(off ota_data_initial.bin); APP=$(off StopWatch-UserDemo.bin)
 cat > docs/manifest.json <<JSON
 {
   "name": "PulseDial",
@@ -21,10 +25,10 @@ cat > docs/manifest.json <<JSON
     {
       "chipFamily": "ESP32-S3",
       "parts": [
-        { "path": "firmware/bootloader.bin", "offset": 0 },
-        { "path": "firmware/partition-table.bin", "offset": 32768 },
-        { "path": "firmware/ota_data_initial.bin", "offset": 53248 },
-        { "path": "firmware/pulsedial.bin", "offset": 131072 }
+        { "path": "firmware/bootloader.bin", "offset": $BL },
+        { "path": "firmware/partition-table.bin", "offset": $PT },
+        { "path": "firmware/ota_data_initial.bin", "offset": $OD },
+        { "path": "firmware/pulsedial.bin", "offset": $APP }
       ]
     }
   ]

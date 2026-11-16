@@ -518,7 +518,8 @@ void AppPulseDial::applySnapshot(const spotify::Snapshot& s, int64_t now)
     _ui_view->setPlayback(s.playing, ms, s.durationMs, s.liked, s.isTrack);
     _pos_ms = static_cast<float>(ms);
     // テンポが分かっていても、拍の位置を覚えるまではマイクを聞く (覚えたか、30 秒何も聞こえなければ止める)
-    _mic_off.store(s.bpm > 0 && (_learned || _no_hear_s > 30));
+    // 曲が変わったら、本物のジャケットが出るまでは聞かない (覚えていたドット絵 → ジャケット → マイクの順。展開と重ならないように)
+    _mic_off.store(s.artPending || (s.bpm > 0 && (_learned || _no_hear_s > 30)));
     // 音量: 変えた直後は、返事を待たずに変えたあとの値 (ゲージ用)
     if (static_cast<uint32_t>(now / 1000) - _vol_changed_ms > 2000) _ui_view->setVolume(s.volume);
     _ui_view->setClock(_hour.load(), _minute.load());

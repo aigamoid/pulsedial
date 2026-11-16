@@ -15,6 +15,7 @@ import base64
 import hashlib
 import http.server
 import json
+import re
 import secrets
 import sys
 import threading
@@ -41,8 +42,15 @@ def ask(value, prompt):
 
 
 client_id = ask(args.client_id, "Client ID (from developer.spotify.com/dashboard): ")
-device = ask(args.device, "StopWatch IP (shown on its screen): ").removeprefix("IP ").strip()
-pin = ask(args.pin, "PIN (4 digits on its screen): ").removeprefix("PIN ").strip()
+device = ask(args.device, "StopWatch IP (shown on its screen): ")
+pin = ask(args.pin, "PIN (4 digits on its screen): ")
+# accept "IP 192.168.1.23", "http://192.168.1.23:8080/", "PIN 1234" and so on
+device = re.sub(r"^(ip\s+)?(https?://)?", "", device.strip(), flags=re.I).split("/")[0].split(":")[0]
+pin = re.sub(r"\D", "", pin)
+if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", device):
+    sys.exit(f"'{device}' does not look like an IP address (e.g. 192.168.1.23).")
+if len(pin) != 4:
+    sys.exit("The PIN has 4 digits.")
 
 verifier = secrets.token_urlsafe(64)[:96]
 challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()

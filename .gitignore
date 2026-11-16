@@ -63,3 +63,7 @@ obj/
 
 sdkconfig
 sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc

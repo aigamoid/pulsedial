@@ -63,6 +63,7 @@ struct Snapshot {
     bool supportsVolume = false;
     uint32_t trackSeq   = 0;  // 曲が変わるたびに増える
     uint32_t artSeq     = 0;  // ジャケットが変わるたびに増える
+    bool artPending     = false;  // 曲が変わって、本物のジャケットをまだ出していない (この間マイクは聞かない)
     uint32_t lastError  = 0;  // 確かめる用: 最後の HTTP の状態
 };
 
@@ -170,7 +171,11 @@ private:
     void requestDownload(const char* uri, const char* artUrl);
     char _wantUri[80]  = {};  // 画面に出す曲 (_jobLock)
     char _shownArt[200] = {};  // 係だけが使う
-    bool _pixOver = false;     // 覚えていたドット絵を出したまま、本物のジャケット (artSeq) をまだ出し直していない (係だけが使う)
+    std::atomic<bool> _pixOver{false};  // 覚えていたドット絵を出したまま、本物のジャケット (artSeq) をまだ出し直していない
+    char _readyArt[2][200] = {};  // 展開ずみの絵 (出ている絵・予備)。通信の係が見るので _jobLock で守る
+    char _pixUrl[200]      = {};  // いま出ているドット絵のジャケット (_lock)
+    void markReady();             // 係: _shownArt と _spareUrl を _readyArt に写す
+    bool showPixFor(const char* artUrl);  // 覚えていたドット絵があれば出す (どちらの係からでも)
     Sink _w;
     void* _imgHttp = nullptr;  // i.scdn.co (つなぎっぱなし)
     void* _rbHttp  = nullptr;  // api.reccobeats.com

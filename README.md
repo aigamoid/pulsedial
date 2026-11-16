@@ -26,7 +26,8 @@ PulseDial is a **remote**: the music plays on your phone, PC or speaker, not on 
 
 - Full-screen album art with a white wave that shakes on the beat
 - Tempo from [ReccoBeats](https://reccobeats.com/); if a song is unknown, the microphone listens and finds the beat
-- Next / previous show the next song immediately (it is read ahead of time)
+- Next shows the next song immediately (it is read ahead of time); going back shows the previous album art without reloading it
+- On a song change it shows a remembered pixel version of the album art at once, then the real art, then starts listening for the beat
 - Like / unlike, volume, play / pause
 - Remembers tempos (2048 songs) and small pixel versions of album art (1024 albums) across power cycles
 - Burn-in protection for the AMOLED (the picture slowly drifts, dims when idle, clock after 3 minutes paused)
@@ -93,6 +94,7 @@ Your PC and the StopWatch must be on the same Wi-Fi. You only do this once; the 
 - **Microphone**: used only on the StopWatch to find the beat. Nothing is recorded or sent.
 - **Setup server**: while PulseDial shows the PIN, the StopWatch listens on port 8080 of your local network
   to receive the key. It accepts a key only with the correct 4-digit PIN and stops after setup.
+  The key is sent over plain HTTP inside your home network, so do the setup on a network you trust.
 - The StopWatch remembers tempos and small pixel pictures per song/album in its flash (`/spiflash/spotify`).
   Song names are not stored.
 
@@ -211,7 +213,7 @@ PC と StopWatch は同じ Wi-Fi につないでください。
 - Spotify のログインの鍵は StopWatch の中（NVS）にだけ保存します。PC には残しません。
 - テンポを調べるため、**Spotify の曲 ID だけ**を無料の公開 API [ReccoBeats](https://reccobeats.com/) に送ります。
 - マイクは拍を見つけるためだけに使い、録音も送信もしません。
-- 鍵を受け取る間だけ、家の LAN で port 8080 を開きます（4 桁の PIN が合うときだけ受け取ります）。
+- 鍵を受け取る間だけ、家の LAN で port 8080 を開きます（4 桁の PIN が合うときだけ受け取ります）。鍵は家の LAN の中を暗号なしの HTTP で送るので、信頼できるネットワークで設定してください。
 
 ### 元に戻すには
 
