@@ -16,6 +16,7 @@
 #include <esp_http_server.h>
 #include <esp_random.h>
 #include <esp_timer.h>
+#include <mbedtls/sha256.h>
 #include <string.h>
 
 #include <algorithm>
@@ -31,6 +32,9 @@ constexpr const char* kApi       = "https://api.spotify.com";
 constexpr size_t kBufCap         = 360 * 1024;  // 応答 (ジャケットの JPEG も入る。640px で 100〜250KB)
 constexpr int kArtSide           = 466;         // ジャケットを持つ大きさ (画面いっぱい)。読みながらここまで縮める
 constexpr int kSetupPort         = 8080;
+constexpr const char* kCallbackUrl = "https://aigamoid.github.io/pulsedial/callback.html";  // QR ログインの戻り先 (GitHub Pages)
+constexpr const char* kScopes =
+    "user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read user-library-modify";
 constexpr int64_t kPollPlayingUs = 2000000;
 constexpr int64_t kPollPausedUs  = 4000000;
 constexpr int64_t kPollIdleUs    = 5000000;
@@ -214,10 +218,109 @@ esp_err_t onSetup(httpd_req_t* req)
     return ESP_OK;
 }
 
+// URL の ? のあと (なければ空)
+std::string queryOf(httpd_req_t* req)
+{
+    const size_t n = httpd_req_get_url_query_len(req);
+    std::string q(n, '\0');
+    if (n == 0 || httpd_req_get_url_query_str(req, q.data(), n + 1) != ESP_OK) return std::string();
+    return q;
+}
+
+// 本体のページ: Client ID を入れて「Spotify にログイン」
 esp_err_t onHello(httpd_req_t* req)
 {
-    httpd_resp_sendstr(req, "StopWatch Spotify setup\n");
+    auto* self = static_cast<Client*>(req->user_ctx);
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    const std::string page = self ? self->loginPage() : std::string("PulseDial");
+    httpd_resp_send(req, page.data(), page.size());
     return ESP_OK;
+}
+
+esp_err_t onLogin(httpd_req_t* req)
+{
+    auto* self      = static_cast<Client*>(req->user_ctx);
+    const auto q    = queryOf(req);
+    char pin[8]     = {}, id[64] = {}, redirect[160] = {};
+    formValue(q.c_str(), "pin", pin, sizeof(pin));
+    formValue(q.c_str(), "client_id", id, sizeof(id));
+    formValue(q.c_str(), "r", redirect, sizeof(redirect));
+    std::string location;
+    if (!self || !self->loginStart(atoi(pin), id, redirect, &location)) {
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "text/plain; charset=utf-8");
+        httpd_resp_sendstr(req, "Wrong PIN or Client ID. Scan the QR code on the StopWatch again.\n"
+                                "PIN か Client ID がちがいます。StopWatch の QR をもう一度読んでください。\n");
+        return ESP_OK;
+    }
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", location.c_str());
+    httpd_resp_sendstr(req, "");
+    return ESP_OK;
+}
+
+esp_err_t onCallback(httpd_req_t* req)
+{
+    auto* self   = static_cast<Client*>(req->user_ctx);
+    const auto q = queryOf(req);
+    std::string code(q.size() + 1, '\0');
+    char state[48] = {}, error[64] = {};
+    formValue(q.c_str(), "code", code.data(), code.size());
+    formValue(q.c_str(), "state", state, sizeof(state));
+    formValue(q.c_str(), "error", error, sizeof(error));
+    const bool ok = self && self->loginCallback(code.c_str(), state, error);
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    static const char kPage[] =
+        "<!doctype html><html><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<title>PulseDial</title><style>body{font:17px/1.6 -apple-system,sans-serif;background:#0b0d12;color:#eef2f8;"
+        "margin:0;padding:48px 20px;text-align:center}b{color:#2878ff}</style></head><body><h2>PulseDial</h2>"
+        "<p id=m>Logging in&hellip; / ログインしています&hellip;</p><script>"
+        "async function t(){try{const s=await (await fetch('/status',{cache:'no-store'})).text();"
+        "if(s.startsWith('ok')){m.innerHTML='<b>Done!</b> Look at the StopWatch. You can close this page.<br>"
+        "完了しました。StopWatch を見てください。このページは閉じて大丈夫です。';return}"
+        "if(s.startsWith('error')){m.textContent=s;return}}catch(e){}setTimeout(t,1000)}t()</script></body></html>";
+    static const char kBad[] =
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<body style='font:17px/1.6 sans-serif;padding:48px 20px;text-align:center'>"
+        "This login link is old or wrong. Scan the QR code on the StopWatch again.<br>"
+        "このリンクは古いか、まちがっています。StopWatch の QR をもう一度読んでください。</body>";
+    httpd_resp_sendstr(req, ok ? kPage : kBad);
+    return ESP_OK;
+}
+
+esp_err_t onStatus(httpd_req_t* req)
+{
+    auto* self = static_cast<Client*>(req->user_ctx);
+    char s[128] = "waiting";
+    if (self) self->loginStatus(s, sizeof(s));
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, s);
+    return ESP_OK;
+}
+
+// PKCE: 合言葉の SHA-256 を base64url (= なし) に
+std::string base64url(const uint8_t* d, size_t n)
+{
+    static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string out;
+    for (size_t i = 0; i < n; i += 3) {
+        const uint32_t v = (d[i] << 16) | (i + 1 < n ? d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+        out += t[(v >> 18) & 63];
+        out += t[(v >> 12) & 63];
+        if (i + 1 < n) out += t[(v >> 6) & 63];
+        if (i + 2 < n) out += t[v & 63];
+    }
+    return out;
+}
+
+void randomChars(char* out, size_t n)
+{
+    static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    for (size_t i = 0; i < n; ++i) out[i] = t[esp_random() % 66];
+    out[n] = 0;
 }
 
 }  // namespace
@@ -400,6 +503,167 @@ bool Client::acceptSetup(int pin, const char* clientId, const char* refresh)
     return true;
 }
 
+// ---------------------------------------------------------------------------- QR ログイン
+
+std::string Client::loginPage()
+{
+    char id[64];
+    copyStr(id, sizeof(id), _clientId);  // 前に使った Client ID (あれば入れておく)
+    for (char* p = id; *p; ++p) {
+        if (!isalnum(static_cast<unsigned char>(*p))) *p = 0;
+    }
+    std::string page =
+        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'><title>PulseDial setup</title><style>"
+        ":root{--bg:#0b0d12;--fg:#eef2f8;--mu:#9aa4b5;--card:#151922;--line:#252b38;--ac:#2878ff}"
+        "*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);"
+        "font:16px/1.6 -apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif}"
+        "main{max-width:520px;margin:0 auto;padding:28px 16px 48px}h1{font-size:24px;margin:0 0 4px}"
+        ".mu{color:var(--mu);font-size:14px}.card{background:var(--card);border:1px solid var(--line);"
+        "border-radius:14px;padding:16px;margin-top:16px}label{font-weight:600;display:block;margin-bottom:6px}"
+        "input{width:100%;font:16px monospace;padding:12px;border-radius:10px;border:1px solid var(--line);"
+        "background:#0f1218;color:var(--fg)}button{width:100%;margin-top:14px;font:600 17px sans-serif;color:#fff;"
+        "background:var(--ac);border:0;border-radius:999px;padding:14px}code{background:var(--line);"
+        "border-radius:4px;padding:2px 5px;font-size:13px;word-break:break-all}ol{padding-left:20px;margin:6px 0}"
+        "</style></head><body><main><h1>PulseDial</h1><div class=mu>Spotify login / Spotify ログイン</div>"
+        "<div class=card><ol><li>At <a style=color:var(--ac) href='https://developer.spotify.com/dashboard'>"
+        "developer.spotify.com/dashboard</a>, make an app (Web API) with this Redirect URI:<br><code>";
+    page += kCallbackUrl;
+    page +=
+        "</code><br><span class=mu>開発者ページでアプリを作り、Redirect URI に上の URL を入れます。</span></li>"
+        "<li>Copy its <b>Client ID</b> and paste it below.<br><span class=mu>アプリの Client ID を下に貼り付けます。</span>"
+        "</li></ol></div><form class=card action=/login method=get><label for=c>Client ID</label>"
+        "<input id=c name=client_id required minlength=16 maxlength=63 autocomplete=off autocapitalize=off "
+        "spellcheck=false value='";
+    page += id;
+    page +=
+        "'><input type=hidden name=pin id=p><input type=hidden name=r id=r>"
+        "<button>Log in with Spotify / Spotify にログイン</button></form>"
+        "<p class=mu>Spotify Premium is required. The key is stored only on the StopWatch.<br>"
+        "Spotify Premium が必要です。鍵は StopWatch の中にだけ保存されます。</p></main><script>"
+        "const q=new URLSearchParams(location.search);p.value=q.get('pin')||'';r.value=q.get('r')||'';"
+        "</script></body></html>";
+    return page;
+}
+
+bool Client::loginStart(int pin, const char* clientId, const char* redirect, std::string* location)
+{
+    if (pin != _pin || _pin == 0 || !clientId) return false;
+    const size_t idLen = strlen(clientId);
+    if (idLen < 16 || idLen >= sizeof(_loginClientId)) return false;
+    for (const char* p = clientId; *p; ++p) {
+        if (!isalnum(static_cast<unsigned char>(*p))) return false;
+    }
+    // 戻り先: ふつうは GitHub Pages のページ。試すときだけ、手元 (127.0.0.1) か https の別のページを使える
+    const char* r = (redirect && *redirect) ? redirect : kCallbackUrl;
+    if (strncmp(r, "https://", 8) != 0 && strncmp(r, "http://127.0.0.1:", 17) != 0 && strncmp(r, "http://localhost:", 17) != 0) {
+        return false;
+    }
+    if (strlen(r) >= sizeof(_loginRedirect)) return false;
+    // PKCE の合言葉と、戻り先がどの本体へ返すかの印 (state)
+    char verifier[72], nonce[17];
+    randomChars(verifier, 64);
+    randomChars(nonce, 16);
+    for (char* p = nonce; *p; ++p) {  // state は URL にそのまま入るので英数字だけに
+        if (!isalnum(static_cast<unsigned char>(*p))) *p = 'x';
+    }
+    uint8_t hash[32];
+    mbedtls_sha256(reinterpret_cast<const unsigned char*>(verifier), 64, hash, 0);
+    const std::string challenge = base64url(hash, sizeof(hash));
+    char state[48];
+    snprintf(state, sizeof(state), "%s~%s", _ip, nonce);
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    copyStr(_verifier, sizeof(_verifier), verifier);
+    copyStr(_state, sizeof(_state), state);
+    copyStr(_loginClientId, sizeof(_loginClientId), clientId);
+    copyStr(_loginRedirect, sizeof(_loginRedirect), r);
+    _codePending = false;
+    copyStr(_loginMsg, sizeof(_loginMsg), "waiting");
+    xSemaphoreGive(_lock);
+    *location = std::string("https://accounts.spotify.com/authorize?client_id=") + urlEncode(clientId) +
+                "&response_type=code&redirect_uri=" + urlEncode(r) + "&scope=" + urlEncode(kScopes) +
+                "&code_challenge_method=S256&code_challenge=" + challenge + "&state=" + urlEncode(state);
+    mclog::tagInfo(kTag, "login: sent to Spotify");
+    return true;
+}
+
+bool Client::loginCallback(const char* code, const char* state, const char* error)
+{
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    const bool known = _state[0] && state && strcmp(state, _state) == 0;
+    if (known && error && *error) {
+        snprintf(_loginMsg, sizeof(_loginMsg), "error: Spotify said \"%s\". Scan the QR code again.", error);
+    } else if (known && code && *code && strlen(code) < sizeof(_loginCode)) {
+        copyStr(_loginCode, sizeof(_loginCode), code);
+        _codePending = true;
+        _state[0]    = 0;  // 1 回だけ使える
+        copyStr(_loginMsg, sizeof(_loginMsg), "working");
+    }
+    xSemaphoreGive(_lock);
+    if (known) mclog::tagInfo(kTag, "login: {}", (error && *error) ? "refused in the browser" : "got the code");
+    return known;
+}
+
+void Client::loginStatus(char* out, size_t cap)
+{
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    copyStr(out, cap, _loginMsg[0] ? _loginMsg : "waiting");
+    xSemaphoreGive(_lock);
+}
+
+// 通信の係から: 許可のコードを鍵 (refresh token) に換えて保存する
+int Client::exchangeCode()
+{
+    char code[768], verifier[72], id[64], redirect[160];
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    copyStr(code, sizeof(code), _loginCode);
+    copyStr(verifier, sizeof(verifier), _verifier);
+    copyStr(id, sizeof(id), _loginClientId);
+    copyStr(redirect, sizeof(redirect), _loginRedirect);
+    xSemaphoreGive(_lock);
+    const std::string body = "grant_type=authorization_code&code=" + urlEncode(code) + "&redirect_uri=" + urlEncode(redirect) +
+                             "&client_id=" + urlEncode(id) + "&code_verifier=" + urlEncode(verifier);
+    memset(code, 0, sizeof(code));
+    esp_http_client_config_t cfg = {};
+    cfg.url                      = "https://accounts.spotify.com/api/token";
+    cfg.method                   = HTTP_METHOD_POST;
+    cfg.crt_bundle_attach        = esp_crt_bundle_attach;
+    cfg.timeout_ms               = 10000;
+    cfg.event_handler            = onHttpEvent;
+    cfg.user_data                = this;
+    cfg.buffer_size              = 2048;
+    cfg.buffer_size_tx           = 1536;
+    esp_http_client_handle_t c   = esp_http_client_init(&cfg);
+    if (!c) return -1;
+    esp_http_client_set_header(c, "Content-Type", "application/x-www-form-urlencoded");
+    esp_http_client_set_post_field(c, body.c_str(), body.size());
+    _bufLen             = 0;
+    const esp_err_t err = esp_http_client_perform(c);
+    const int status    = err == ESP_OK ? esp_http_client_get_status_code(c) : -1;
+    esp_http_client_cleanup(c);
+    _buf[std::min(_bufLen, _bufCap - 1)] = 0;
+    if (status < 0) {
+        mclog::tagWarn(kTag, "login: network error {}", static_cast<int>(err));
+        return -1;
+    }
+    JsonDocument doc;
+    deserializeJson(doc, _buf, _bufLen);
+    const char* refresh = doc["refresh_token"] | "";
+    if (status != 200 || !refresh[0] || strlen(refresh) >= sizeof(_refresh)) {
+        mclog::tagWarn(kTag, "login: http {} {}", status, doc["error"] | "");
+        return 0;
+    }
+    {
+        Settings s(kNs, true);
+        s.SetString("client_id", id);
+        s.SetString("refresh", refresh);
+    }
+    mclog::tagInfo(kTag, "login: key received");
+    _stopServerAtUs = nowUs() + 4000000;  // スマホが「完了」を見られるように 4 秒だけ残す
+    _credsArrived.store(true);
+    return 1;
+}
+
 // 1 = 取れた、0 = 鍵が使えない (ログインし直し)、-1 = つながらない
 int Client::refreshToken()
 {
@@ -458,7 +722,7 @@ void Client::startSetupServer()
     cfg.server_port       = kSetupPort;
     cfg.ctrl_port         = 32790;  // 公式の設定用サーバーとぶつからないように
     cfg.stack_size        = 6144;
-    cfg.max_uri_handlers  = 4;
+    cfg.max_uri_handlers  = 8;
     httpd_handle_t h      = nullptr;
     if (httpd_start(&h, &cfg) != ESP_OK) {
         mclog::tagError(kTag, "setup server failed");
@@ -474,7 +738,13 @@ void Client::startSetupServer()
     get.method      = HTTP_GET;
     get.handler     = onHello;
     get.user_ctx    = this;
-    if (httpd_register_uri_handler(h, &post) != ESP_OK || httpd_register_uri_handler(h, &get) != ESP_OK) {
+    httpd_uri_t login = {}, cb = {}, st = {};
+    login.uri = "/login", login.method = HTTP_GET, login.handler = onLogin, login.user_ctx = this;
+    cb.uri = "/callback", cb.method = HTTP_GET, cb.handler = onCallback, cb.user_ctx = this;
+    st.uri = "/status", st.method = HTTP_GET, st.handler = onStatus, st.user_ctx = this;
+    if (httpd_register_uri_handler(h, &post) != ESP_OK || httpd_register_uri_handler(h, &get) != ESP_OK ||
+        httpd_register_uri_handler(h, &login) != ESP_OK || httpd_register_uri_handler(h, &cb) != ESP_OK ||
+        httpd_register_uri_handler(h, &st) != ESP_OK) {
         mclog::tagError(kTag, "setup server: register failed");
         httpd_stop(h);
         return;
@@ -489,6 +759,10 @@ void Client::stopSetupServer()
     httpd_stop(static_cast<httpd_handle_t>(_server));
     _server = nullptr;
     _pin    = 0;
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    _verifier[0] = _state[0] = _loginCode[0] = _loginMsg[0] = 0;
+    _codePending = false;
+    xSemaphoreGive(_lock);
 }
 
 // ============================================================================ API
@@ -1187,7 +1461,7 @@ void Client::artRun()
 
 void Client::doCommand(Cmd c)
 {
-    static const char* const kNames[] = {"play", "pause", "next", "prev", "like", "unlike", "vol+", "vol-"};
+    static const char* const kNames[] = {"play", "pause", "next", "prev", "like", "unlike", "vol+", "vol-", "logout"};
     mclog::tagInfo(kTag, "command {}", kNames[static_cast<int>(c)]);
     int st          = -1;
     int64_t pollIn  = 300000;
@@ -1245,6 +1519,14 @@ void Client::doCommand(Cmd c)
             }
             return;
         }
+        case Cmd::Logout:  // 鍵を消して、ログインの画面へ (Client ID は次のログインのために残す)
+            clearCredentials();
+            _logoutAsked = true;
+            xSemaphoreTake(_lock, portMAX_DELAY);
+            _snap.hasPlayback = false;
+            _snap.playing     = false;
+            xSemaphoreGive(_lock);
+            return;
         case Cmd::VolumeUp:
         case Cmd::VolumeDown: {
             if (!_snap.supportsVolume || _snap.volume < 0) return;
@@ -1298,9 +1580,29 @@ void Client::run()
             if (_credsArrived.exchange(false)) {
                 haveCreds = loadCredentials();
                 if (haveCreds) {
-                    stopSetupServer();
+                    if (nowUs() >= _stopServerAtUs) stopSetupServer();  // QR ログインなら、少しあとで止める (下)
                     continue;
                 }
+            }
+            bool pending = false;
+            xSemaphoreTake(_lock, portMAX_DELAY);
+            pending = _codePending;
+            xSemaphoreGive(_lock);
+            if (pending) {  // スマホで許可された: 鍵に換える
+                setState(NetState::Connecting, "Spotify", "Logging in…", "");
+                const int r = exchangeCode();
+                xSemaphoreTake(_lock, portMAX_DELAY);
+                _codePending = false;
+                _loginCode[0] = 0;
+                if (r > 0) {
+                    copyStr(_loginMsg, sizeof(_loginMsg), "ok");
+                } else {
+                    copyStr(_loginMsg, sizeof(_loginMsg),
+                            r == 0 ? "error: Spotify refused the login. Check the Client ID and the Redirect URI, then scan again."
+                                   : "error: Could not reach Spotify. Check the Wi-Fi and scan again.");
+                }
+                xSemaphoreGive(_lock);
+                continue;
             }
             startSetupServer();
             if (_server) {
@@ -1315,6 +1617,7 @@ void Client::run()
             continue;
         }
 
+        if (_server && nowUs() >= _stopServerAtUs) stopSetupServer();  // QR ログインのあと 4 秒たった
         int64_t t = nowUs();
         if (t < _retryAfterUs) {
             // Spotify が混んでいて長く待つときは、待っていることを出す (何も出さないと止まって見える)
@@ -1356,6 +1659,10 @@ void Client::run()
         Cmd c;
         if (xQueueReceive(_cmds, &c, pdMS_TO_TICKS(waitUs / 1000)) == pdTRUE) {
             doCommand(c);
+            if (_logoutAsked) {
+                _logoutAsked = false;
+                haveCreds    = false;
+            }
             continue;
         }
         if (nowUs() >= _nextPollUs) poll();

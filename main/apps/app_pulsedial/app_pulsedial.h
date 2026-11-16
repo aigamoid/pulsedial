@@ -84,7 +84,8 @@ private:
     // テンポ: 覚えた値・ReccoBeats・マイク。マイクに音楽が入っているときだけ、拍の位置を合わせ直して覚える (イヤホンなら何もしない)
     void tempoStep(const spotify::Snapshot& s, const spviz::Frame& in, float dt);
     void showNoticeFor(const spotify::Snapshot& s);
-    char _qr_ssid[48] = {};  // QR を作った Wi-Fi の名前
+    char _qr_text[128] = {};  // いま出している QR の中身 (同じなら作り直さない)
+    void setQr(const std::string& text);
     uint32_t _tempo_track = 0;
     float _pos_ms         = 0;  // 曲の位置 (このコマ)
     float _off            = 0;  // マイクで合わせた拍の位置
@@ -102,6 +103,7 @@ private:
     uint32_t _down_ms      = 0;
     int _down_x = 0, _down_y = 0, _last_x = 0, _last_y = 0;
     bool _b_held           = false;
+    bool _a_logout         = false;  // A を 5 秒長押しでログアウトした (離すまで 1 回だけ)
     int _main_prio         = -1;  // ボタンを読むタスクの元の優先度 (開いている間は上げる)  // B を長押しした (そのあとのクリックの回数は使わない)
     uint32_t _next_time_ms = 0;
 

@@ -251,6 +251,12 @@ void AppPulseDial::onRunning()
     auto& btnA = GetHAL().btnA;
     auto& btnB = GetHAL().btnB;
     if (btnA.wasClicked() && !btnB.isPressed()) togglePlay();
+    // A を 5 秒長押し: Spotify からログアウト (別のアカウントや Client ID でログインし直すとき)
+    if (btnA.pressedFor(5000) && !btnB.isPressed() && !_a_logout) {
+        _a_logout = true;
+        _client.command(spotify::Cmd::Logout);
+    }
+    if (btnA.isReleased()) _a_logout = false;
     if (btnB.wasHold() && !btnA.isPressed()) {
         toggleLike();
         _b_held = true;  // このあとに決まるクリックの回数は使わない
@@ -525,7 +531,27 @@ void AppPulseDial::applySnapshot(const spotify::Snapshot& s, int64_t now)
     _ui_view->setClock(_hour.load(), _minute.load());
 }
 
-// 案内の画面: 状態ごとに絵柄と文言 (ドット絵 + 白い文字)。Wi-Fi 設定は、本体の Wi-Fi に入る QR
+// QR を作って案内の画面に渡す (中身が前と同じなら何もしない)
+void AppPulseDial::setQr(const std::string& text)
+{
+    if (text == _qr_text) return;
+    strncpy(_qr_text, text.c_str(), sizeof(_qr_text) - 1);
+    _qr_text[sizeof(_qr_text) - 1] = 0;
+    // 作業用は PSRAM に (内蔵メモリは Wi-Fi の設定ページに残す)
+    constexpr size_t kQrBuf = qrcodegen_BUFFER_LEN_FOR_VERSION(10);
+    auto* work = static_cast<uint8_t*>(heap_caps_malloc(kQrBuf * 2 + 57 * 57, MALLOC_CAP_SPIRAM));
+    if (!work) return;
+    uint8_t *qr = work, *tmp = work + kQrBuf, *mods = work + kQrBuf * 2;
+    if (qrcodegen_encodeText(text.c_str(), tmp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true)) {
+        const int n = qrcodegen_getSize(qr);
+        for (int y = 0; y < n; ++y)
+            for (int x = 0; x < n; ++x) mods[y * n + x] = qrcodegen_getModule(qr, x, y) ? 1 : 0;
+        _ui_view->setNoticeQr(mods, n);
+    }
+    heap_caps_free(work);
+}
+
+// 案内の画面: 状態ごとに絵柄と文言 (ドット絵 + 白い文字)。Wi-Fi 設定は本体の Wi-Fi に入る QR、ログインは本体のページの QR
 void AppPulseDial::showNoticeFor(const spotify::Snapshot& s)
 {
     using N = GlassUi::Notice;
@@ -534,37 +560,35 @@ void AppPulseDial::showNoticeFor(const spotify::Snapshot& s)
         case spotify::NetState::WifiConnecting: _ui_view->showNotice(N::Wifi, "Connecting to Wi-Fi", s.msg[2], ""); break;
         case spotify::NetState::WifiSetupAp: {
             // QR の中身: WIFI:T:nopass;S:<名前>;; (本体の Wi-Fi は鍵なし)。名前の \ ; , : " は \ を付ける
-            if (strcmp(s.msg[1], _qr_ssid) != 0) {
-                strncpy(_qr_ssid, s.msg[1], sizeof(_qr_ssid) - 1);
-                _qr_ssid[sizeof(_qr_ssid) - 1] = 0;
-                std::string txt = "WIFI:T:nopass;S:";
-                for (const char* p = s.msg[1]; *p; ++p) {
-                    if (strchr("\\;,:\"", *p)) txt += '\\';
-                    txt += *p;
-                }
-                txt += ";;";
-                // 作業用は PSRAM に (内蔵メモリは Wi-Fi の設定ページに残す)
-                constexpr size_t kQrBuf = qrcodegen_BUFFER_LEN_FOR_VERSION(10);
-                auto* work = static_cast<uint8_t*>(heap_caps_malloc(kQrBuf * 2 + 57 * 57, MALLOC_CAP_SPIRAM));
-                if (work) {
-                    uint8_t *qr = work, *tmp = work + kQrBuf, *mods = work + kQrBuf * 2;
-                    if (qrcodegen_encodeText(txt.c_str(), tmp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true)) {
-                        const int n = qrcodegen_getSize(qr);
-                        for (int y = 0; y < n; ++y)
-                            for (int x = 0; x < n; ++x) mods[y * n + x] = qrcodegen_getModule(qr, x, y) ? 1 : 0;
-                        _ui_view->setNoticeQr(mods, n);
-                    }
-                    heap_caps_free(work);
-                }
+            std::string txt = "WIFI:T:nopass;S:";
+            for (const char* p = s.msg[1]; *p; ++p) {
+                if (strchr("\\;,:\"", *p)) txt += '\\';
+                txt += *p;
             }
+            txt += ";;";
+            setQr(txt);
             const char* url = s.msg[2];
             if (strncmp(url, "http://", 7) == 0) url += 7;
             const std::string open = std::string("then open ") + url;
             _ui_view->showNotice(N::Qr, "Scan to join Wi-Fi", s.msg[1], open.c_str());
             break;
         }
-        case spotify::NetState::NeedLogin: _ui_view->showNotice(N::Key, s.msg[2], "Run spotify_login.py on PC", s.msg[1], true); break;
-        case spotify::NetState::Connecting: _ui_view->showNotice(N::Logo, "Connecting to Spotify", "", ""); break;
+        case spotify::NetState::NeedLogin: {
+            // msg[1] = "IP 192.168.1.23"、msg[2] = "PIN 1234"。受け取りのサーバがまだなら msg[1] は空
+            if (strncmp(s.msg[1], "IP ", 3) != 0 || strncmp(s.msg[2], "PIN ", 4) != 0) {
+                _ui_view->showNotice(N::Key, s.msg[2], "Spotify setup", "", true);
+                break;
+            }
+            const char* ip  = s.msg[1] + 3;
+            const char* pin = s.msg[2] + 4;
+            setQr(std::string("http://") + ip + ":8080/?pin=" + pin);  // スマホで読むと本体のページが開く
+            const std::string open = std::string("or open ") + ip + ":8080";
+            _ui_view->showNotice(N::Qr, "Scan to log in to Spotify", s.msg[2], open.c_str());
+            break;
+        }
+        case spotify::NetState::Connecting:  // 2 行目はログイン中だけ ("Logging in…")
+            _ui_view->showNotice(N::Logo, "Connecting to Spotify", strcmp(s.msg[1], "Connecting…") == 0 ? "" : s.msg[1], "");
+            break;
         default: _ui_view->showNotice(N::Logo, s.msg[1], s.msg[2], ""); break;  // つながらない・鍵が使えない
     }
 }

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PulseDial Login</title>
+  <meta name="description" content="Hands the Spotify login back to your StopWatch on your home network.">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="icon.png">
+  <style>
+    :root { --bg: #0b0d12; --fg: #eef2f8; --muted: #9aa4b5; --accent: #2878ff; }
+    @media (prefers-color-scheme: light) { :root { --bg: #f6f7fa; --fg: #121620; --muted: #5b6475; --accent: #1f63db; } }
+    body { margin: 0; background: var(--bg); color: var(--fg); text-align: center;
+           font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+    main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
+    img { width: 96px; height: 96px; border-radius: 50%; }
+    .muted { color: var(--muted); font-size: 15px; }
+    a.btn { display: inline-block; margin-top: 16px; padding: 12px 28px; border-radius: 999px; color: #fff;
+            background: var(--accent); text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+<main>
+  <img src="icon.png" alt="">
+  <h2>PulseDial</h2>
+  <p id="msg">Sending the login to your StopWatch&hellip;<br>StopWatch にログインを渡しています&hellip;</p>
+  <p id="more" class="muted"></p>
+</main>
+<script>
+  // Spotify sends the user back here with ?code=...&state=<StopWatch IP>~<random>.
+  // This page only forwards them to the StopWatch on the home network; the code is useless without the
+  // secret (PKCE verifier) that never leaves the StopWatch.
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const msg = document.getElementById("msg"), more = document.getElementById("more");
+    const state = q.get("state") || "", code = q.get("code"), error = q.get("error");
+    const ip = state.split("~")[0];
+    const isPrivate = /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$/.test(ip);
+    if (!isPrivate || (!code && !error)) {
+      msg.innerHTML = "This page is opened by the Spotify login of PulseDial.<br>PulseDial の Spotify ログインから開くページです。";
+      return;
+    }
+    const target = "http://" + ip + ":8080/callback?" +
+      (code ? "code=" + encodeURIComponent(code) : "error=" + encodeURIComponent(error)) +
+      "&state=" + encodeURIComponent(state);
+    more.innerHTML = "If nothing happens, make sure this phone is on the same Wi-Fi as the StopWatch, then tap:" +
+      "<br>動かないときは、StopWatch と同じ Wi-Fi につないでから押してください。" +
+      "<br><a class='btn' href='" + target + "'>Open StopWatch / StopWatch を開く</a>";
+    location.replace(target);
+  })();
+</script>
+</body>
+</html>

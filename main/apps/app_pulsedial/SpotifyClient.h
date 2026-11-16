@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <string>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -38,7 +39,7 @@ enum class NetState : uint8_t {
     NetError,   // しばらくつながらない
 };
 
-enum class Cmd : uint8_t { Play, Pause, Next, Prev, Like, Unlike, VolumeUp, VolumeDown };
+enum class Cmd : uint8_t { Play, Pause, Next, Prev, Like, Unlike, VolumeUp, VolumeDown, Logout };
 
 struct Snapshot {
     NetState state = NetState::Starting;
@@ -86,6 +87,11 @@ public:
     void httpData(const char* data, int len);
     void httpHeader(const char* key, const char* value);
     bool acceptSetup(int pin, const char* clientId, const char* refresh);
+    // QR ログイン (スマホのブラウザから。PC もコマンドも要らない): 本体のページ → Spotify の許可 → 戻り先のページ → 本体
+    std::string loginPage();  // 本体のページ (Client ID を入れる)
+    bool loginStart(int pin, const char* clientId, const char* redirect, std::string* location);  // Spotify の許可の URL
+    bool loginCallback(const char* code, const char* state, const char* error);  // 許可のコードを受け取る
+    void loginStatus(char* out, size_t cap);  // waiting / working / ok / error: ...
 
 private:
     static void taskEntry(void* arg);
@@ -197,6 +203,17 @@ private:
 
     void* _server = nullptr;  // httpd_handle_t
     int _pin      = 0;
+    // QR ログイン (_lock で守る。鍵の交換は通信の係が行う: HTTP サーバのタスクはスタックが小さく、暗号の接続を作れない)
+    char _verifier[72]       = {};  // PKCE の合言葉 (本体の中だけ)
+    char _state[48]          = {};  // "<IP>~<乱数>": 戻り先のページが、どの本体へ返すかに使う
+    char _loginClientId[64]  = {};
+    char _loginRedirect[160] = {};
+    char _loginCode[768]     = {};
+    bool _codePending        = false;
+    char _loginMsg[96]       = {};
+    int exchangeCode();  // 許可のコード → 鍵。1 = 取れた、0 = 断られた、-1 = つながらない
+    bool _logoutAsked = false;  // 通信の係だけ: ログアウトしたので、ログインの画面に戻る
+    int64_t _stopServerAtUs = 0;  // ログインできたあと、スマホが「完了」を見られるように少しだけサーバを残す
     int64_t _setupRetryUs = 0;  // 受け取りのサーバを作れなかった: この時刻まで作り直さない
     std::atomic<bool> _credsArrived{false};
     char _ip[20] = {};

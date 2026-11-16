@@ -17,7 +17,7 @@ shakes on the beat.
 
 - M5Stack StopWatch
 - **Spotify Premium** (Spotify only lets Premium accounts control playback through its API)
-- A PC with Chrome or Edge (to install), and Python 3.9+ (to log in once)
+- A PC with Chrome or Edge (to install) and a smartphone (to scan QR codes)
 - 2.4 GHz Wi-Fi
 
 PulseDial is a **remote**: the music plays on your phone, PC or speaker, not on the StopWatch.
@@ -61,7 +61,7 @@ Each user makes their own small "app" on Spotify's developer site. This is free 
    <img src="docs/img/01_dashboard.png" width="600" alt="Spotify dashboard: Create app">
 
    - App name / description: anything (e.g. `PulseDial`)
-   - Redirect URI: `http://127.0.0.1:8888/callback` (press **Add**)
+   - Redirect URI: `https://aigamoid.github.io/pulsedial/callback.html` (press **Add**)
 
    <img src="docs/img/02_create_app_a.png" width="600" alt="Create app form: name, description, redirect URI">
 
@@ -74,18 +74,25 @@ Each user makes their own small "app" on Spotify's developer site. This is free 
 
    <img src="docs/img/03_app_settings.png" width="600" alt="App settings: Client ID">
 
-3. On the StopWatch, PulseDial now shows **PIN** and **IP**.
-4. On your PC, download this repository (green **Code** button → **Download ZIP**, then unzip) and run:
+3. On the StopWatch, PulseDial shows **Scan to log in to Spotify** with a QR code. Scan it with your phone
+   (on the same Wi-Fi as the StopWatch).
+4. A page from the StopWatch opens. Paste the **Client ID** and press **Log in with Spotify**.
+5. Spotify asks for permission; press **Agree**. The page says **Done!** and the StopWatch switches to the player.
 
-   ```bash
-   python3 tools/spotify_login.py
-   ```
+No PC or commands are needed for this step. The StopWatch keeps the key, but Spotify's keys expire after
+**180 days**: then PulseDial shows the QR code again, and you log in once more (the Client ID is remembered).
 
-   (On Windows: `py tools\spotify_login.py`.) Enter the Client ID, the IP and the PIN. Your browser opens
-   Spotify; press **Agree**. The StopWatch switches to the player.
+If the page doesn't open: make sure the phone is on the same Wi-Fi as the StopWatch (not on mobile data).
+An iPhone may ask to allow access to devices on your local network — allow it. On a Mac browser, the same
+permission is in System Settings → Privacy & Security → Local Network.
 
-Your PC and the StopWatch must be on the same Wi-Fi. The StopWatch keeps the key, but Spotify's keys expire
-after **180 days**: then PulseDial shows the setup screen again, and you run `spotify_login.py` once more.
+<details>
+<summary>Log in from a PC with a script instead</summary>
+
+Add `http://127.0.0.1:8888/callback` as another Redirect URI of your Spotify app, download this repository
+(**Code** → **Download ZIP**) and run `python3 tools/spotify_login.py` (Windows: `py tools\spotify_login.py`,
+Python 3.9+). Enter the Client ID, and the IP and PIN shown on the StopWatch.
+</details>
 
 ## Controls
 
@@ -99,6 +106,7 @@ after **180 days**: then PulseDial shows the setup screen again, and you run `sp
 | Swipe left / right | Next / previous |
 | Swipe up / down | Volume (if the playing device allows it) |
 | Hold A + B | Back to the menu |
+| Hold A for 5 s | Log out of Spotify (to log in with another account or Client ID) |
 
 ## Privacy and data
 
@@ -107,9 +115,11 @@ after **180 days**: then PulseDial shows the setup screen again, and you run `sp
 - **ReccoBeats**: to get the tempo, the StopWatch sends the **Spotify track ID** (nothing else) to
   `api.reccobeats.com`, a free public API.
 - **Microphone**: used only on the StopWatch to find the beat. Nothing is recorded or sent.
-- **Setup server**: while PulseDial shows the PIN, the StopWatch listens on port 8080 of your local network
-  to receive the key. It accepts a key only with the correct 4-digit PIN and stops after setup.
-  The key is sent over plain HTTP inside your home network, so do the setup on a network you trust.
+- **Login**: while PulseDial shows the login QR code, the StopWatch serves a small page on port 8080 of your
+  home network (it needs the 4-digit PIN in the QR code) and stops it after login. After you agree, Spotify sends
+  your browser to `aigamoid.github.io/pulsedial/callback.html`, which only hands the one-time login code to the
+  StopWatch on your network. The StopWatch exchanges it for the key itself; the code is useless without a secret
+  (PKCE) that never leaves the StopWatch. The local page uses plain HTTP, so log in on a network you trust.
 - The StopWatch remembers tempos and small pixel pictures per song/album in its flash (`/spiflash/spotify`).
   Song names are not stored.
 
@@ -160,7 +170,7 @@ web installer (GitHub Pages).
 | `patches/M5GFX.patch` | Keeps M5GFX's DMA buffer from shrinking (prevents a crash) |
 | `tools/spotify_login.py` | One-time login on a PC |
 | `tools/make_icon.py` | Draws the launcher icon |
-| `docs/` | Web installer page |
+| `docs/` | Web installer page, and `callback.html` (the Spotify login hands the code back to the StopWatch) |
 
 Source comments in `app_pulsedial` are mostly in Japanese.
 
@@ -184,7 +194,7 @@ The upstream README is kept as [README.upstream.md](README.upstream.md).
 
 - M5Stack StopWatch
 - **Spotify Premium**（再生の操作は Premium でないとできません）
-- Chrome か Edge が使える PC（書き込み用）と Python 3.9 以上（最初のログイン用）
+- Chrome か Edge が使える PC（書き込み用）と、スマホ（QR を読む用）
 - 2.4 GHz の Wi-Fi
 
 ### 入れ方（3 ステップ）
@@ -198,22 +208,21 @@ The upstream README is kept as [README.upstream.md](README.upstream.md).
    `192.168.4.1` を開いて家の Wi-Fi（2.4 GHz）を選びます。
 3. **Spotify にログインする（最初の 1 回だけ）**
    1. [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) で **Create app** を押します。
-      名前と説明は何でもよく、Redirect URI に `http://127.0.0.1:8888/callback` を入れて **Add**、
+      名前と説明は何でもよく、Redirect URI に `https://aigamoid.github.io/pulsedial/callback.html` を入れて **Add**、
       APIs used は **Web API** を選び、規約に同意して **Save** します。
       （画面の例は上の英語の手順にあります）
    2. アプリの **Settings** で **Client ID** をコピーします。
-   3. このリポジトリを PC にダウンロード（緑の **Code** → **Download ZIP** → 展開）して、次を実行します。
-      Windows では `py tools\spotify_login.py` です。
+   3. StopWatch に「**Scan to log in to Spotify**」と QR コードが出るので、スマホで読み取ります
+      （スマホは StopWatch と同じ Wi-Fi につないでおきます）。
+   4. StopWatch のページが開くので、**Client ID** を貼り付けて **Spotify にログイン** を押します。
+   5. Spotify の画面で **同意する** を押すと、ページに「完了しました」と出て、StopWatch がプレイヤーに切り替わります。
 
-      ```bash
-      python3 tools/spotify_login.py
-      ```
+この手順に PC やコマンドは要りません。Spotify の鍵は **180 日**で切れます。切れると PulseDial に QR が
+また出るので、もう一度ログインしてください（Client ID は覚えています）。
 
-      Client ID と、StopWatch の画面に出ている IP と PIN を入れると、ブラウザで Spotify が開きます。
-      **同意する** を押すと、StopWatch がプレイヤーの画面に切り替わります。
-
-PC と StopWatch は同じ Wi-Fi につないでください。Spotify の鍵は **180 日**で切れます。切れると PulseDial が
-設定の画面に戻るので、`spotify_login.py` をもう一度実行してください。
+ページが開かないとき：スマホが StopWatch と同じ Wi-Fi につながっているか（モバイル通信になっていないか）を
+確かめてください。iPhone は「ローカルネットワーク上のデバイスへのアクセス」を聞いてくることがあるので、許可します。
+PC のスクリプト（`tools/spotify_login.py`）でもログインできます（上の英語の説明の「Log in from a PC」）。
 
 ### 操作
 
@@ -227,13 +236,17 @@ PC と StopWatch は同じ Wi-Fi につないでください。Spotify の鍵は
 | 左右にスワイプ | 次 / 前の曲 |
 | 上下にスワイプ | 音量（再生中の機器が対応していれば） |
 | A と B を同時に長押し | メニューに戻る |
+| A を 5 秒長押し | Spotify からログアウト（別のアカウントや Client ID でログインし直すとき） |
 
 ### データの扱い
 
 - Spotify のログインの鍵は StopWatch の中（NVS）にだけ保存します。PC には残しません。
 - テンポを調べるため、**Spotify の曲 ID だけ**を無料の公開 API [ReccoBeats](https://reccobeats.com/) に送ります。
 - マイクは拍を見つけるためだけに使い、録音も送信もしません。
-- 鍵を受け取る間だけ、家の LAN で port 8080 を開きます（4 桁の PIN が合うときだけ受け取ります）。鍵は家の LAN の中を暗号なしの HTTP で送るので、信頼できるネットワークで設定してください。
+- ログインの QR が出ている間だけ、家の LAN で port 8080 に小さなページを開きます（QR に入っている 4 桁の PIN が必要）。
+  Spotify で同意すると、ブラウザが `aigamoid.github.io/pulsedial/callback.html` に戻り、このページが 1 回きりの
+  ログインのコードを家の中の StopWatch に渡すだけです。鍵への交換は StopWatch が自分で行い、コードは StopWatch の中の
+  合言葉（PKCE）がないと使えません。家の中のページは暗号なしの HTTP なので、信頼できるネットワークでログインしてください。
 
 ### 元に戻すには
 

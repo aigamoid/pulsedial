@@ -80,13 +80,12 @@
     <h2>3. Spotify</h2>
     <ol>
       <li>Create your own app at <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a>
-        (Spotify Premium is required) with the Redirect URI <code>http://127.0.0.1:8888/callback</code>.<br>
-        Spotify の開発者ページで自分用のアプリを作ります（Premium が必要）。</li>
-      <li>Download this repository (<a href="https://github.com/aigamoid/pulsedial/archive/refs/heads/main.zip">ZIP</a>), unzip it,
-        and run <code>python3 tools/spotify_login.py</code> (Windows: <code>py tools\spotify_login.py</code>, Python 3.9+).
-        Enter the Client ID, and the IP and PIN shown on the StopWatch.<br>
-        リポジトリを ZIP でダウンロードして展開し、<code>spotify_login.py</code> を実行します（Windows は <code>py</code>）。
-        Client ID と、本体に出る IP・PIN を入れます。</li>
+        (Spotify Premium is required) with the Redirect URI <code>https://aigamoid.github.io/pulsedial/callback.html</code>
+        and <b>Web API</b>, then copy its <b>Client ID</b>.<br>
+        Spotify の開発者ページで自分用のアプリを作り（Premium が必要）、Client ID をコピーします。</li>
+      <li>PulseDial shows a QR code to log in. Scan it with your phone (same Wi-Fi), paste the Client ID and press
+        <b>Log in with Spotify</b>, then <b>Agree</b>.<br>
+        PulseDial に出る QR をスマホで読み、Client ID を貼り付けてログインし、Spotify で同意します。</li>
     </ol>
     <p class="note">Step-by-step guide with screenshots: <a href="https://github.com/aigamoid/pulsedial#readme">README</a></p>
   </section>
