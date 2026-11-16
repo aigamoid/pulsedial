@@ -66,7 +66,7 @@ flowchart TB
 ## 3. Album art: from a song change to pixels
 
 ```mermaid
-flowchart LR
+flowchart TB
     T["song changes<br/>(poll, or Next = shown at once<br/>from the read-ahead queue)"]
     PIX["TrackMemory<br/>16×16 · 16-color pixel art<br/>(shown instantly)"]
     C{"decoded already?<br/>_shown / _spare"}
@@ -119,7 +119,7 @@ flowchart LR
 ## 5. Finding the beat
 
 ```mermaid
-flowchart LR
+flowchart TB
     MIC["I²S mic<br/>44.1 kHz mono"]
     HOP["hop 512 (11.6 ms)"]
     FFT["FFT 1024 (esp-dsp, AES3)<br/>43 Hz/bin → 32 bands"]
