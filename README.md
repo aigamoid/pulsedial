@@ -55,11 +55,23 @@ firmware, see [Restore the official firmware](#restore-the-official-firmware).
 Each user makes their own small "app" on Spotify's developer site. This is free and takes about 3 minutes.
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), log in, and press **Create app**.
+
+   <img src="docs/img/01_dashboard.png" width="600" alt="Spotify dashboard: Create app">
+
    - App name / description: anything (e.g. `PulseDial`)
    - Redirect URI: `http://127.0.0.1:8888/callback` (press **Add**)
+
+   <img src="docs/img/02_create_app_a.png" width="600" alt="Create app form: name, description, redirect URI">
+
    - APIs used: **Web API**
    - Accept the terms and **Save**.
+
+   <img src="docs/img/02_create_app_b.png" width="600" alt="Create app form: Web API, terms, Save">
+
 2. Open the app's **Settings** and copy the **Client ID**.
+
+   <img src="docs/img/03_app_settings.png" width="600" alt="App settings: Client ID">
+
 3. On the StopWatch, PulseDial now shows **PIN** and **IP**.
 4. On your PC, download this repository (green **Code** button → **Download ZIP**, then unzip) and run:
 
@@ -70,7 +82,8 @@ Each user makes their own small "app" on Spotify's developer site. This is free 
    (On Windows: `py tools\spotify_login.py`.) Enter the Client ID, the IP and the PIN. Your browser opens
    Spotify; press **Agree**. The StopWatch switches to the player.
 
-Your PC and the StopWatch must be on the same Wi-Fi. You only do this once; the StopWatch keeps the key.
+Your PC and the StopWatch must be on the same Wi-Fi. The StopWatch keeps the key, but Spotify's keys expire
+after **180 days**: then PulseDial shows the setup screen again, and you run `spotify_login.py` once more.
 
 ## Controls
 
@@ -100,6 +113,7 @@ Your PC and the StopWatch must be on the same Wi-Fi. You only do this once; the 
 
 ## Limitations
 
+- Spotify's login key lasts 180 days, so you log in again about twice a year.
 - Spotify Premium is required, and Spotify limits each developer app to 5 users (that's why everyone makes
   their own). Spotify changed its developer rules in 2026 and may change them again; PulseDial may stop
   working until it is updated.
@@ -182,6 +196,7 @@ The upstream README is kept as [README.upstream.md](README.upstream.md).
    1. [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) で **Create app** を押します。
       名前と説明は何でもよく、Redirect URI に `http://127.0.0.1:8888/callback` を入れて **Add**、
       APIs used は **Web API** を選び、規約に同意して **Save** します。
+      （画面の例は上の英語の手順にあります）
    2. アプリの **Settings** で **Client ID** をコピーします。
    3. このリポジトリを PC にダウンロード（緑の **Code** → **Download ZIP** → 展開）して、次を実行します。
       Windows では `py tools\spotify_login.py` です。
@@ -193,7 +208,8 @@ The upstream README is kept as [README.upstream.md](README.upstream.md).
       Client ID と、StopWatch の画面に出ている IP と PIN を入れると、ブラウザで Spotify が開きます。
       **同意する** を押すと、StopWatch がプレイヤーの画面に切り替わります。
 
-PC と StopWatch は同じ Wi-Fi につないでください。
+PC と StopWatch は同じ Wi-Fi につないでください。Spotify の鍵は **180 日**で切れます。切れると PulseDial が
+設定の画面に戻るので、`spotify_login.py` をもう一度実行してください。
 
 ### 操作
 
