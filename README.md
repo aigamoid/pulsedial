@@ -172,6 +172,7 @@ web installer (GitHub Pages).
 | `tools/make_icon.py` | Draws the launcher icon |
 | `docs/` | Web installer page, and `callback.html` (the Spotify login hands the code back to the StopWatch) |
 
+How it works inside (tasks, cores, album art pipeline, beat detection, QR login): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 Source comments in `app_pulsedial` are mostly in Japanese.
 
 ## License
