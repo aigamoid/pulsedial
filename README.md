@@ -38,7 +38,9 @@ PulseDial is a **remote**: the music plays on your phone, PC or speaker, not on 
 
 1. Connect the StopWatch to your PC with a USB-C cable.
 2. Open **https://aigamoid.github.io/pulsedial/** in Chrome or Edge and press **Install PulseDial**.
-3. Choose the StopWatch's serial port and wait until it finishes.
+3. Choose **USB JTAG/serial debug unit** (on a Mac: `cu.usbmodem…`; on Windows: a `COM` port) and press **Connect**.
+   If it asks to erase the device, you can leave it unchecked (your Wi-Fi settings and Spotify login are kept).
+   Wait until it finishes.
 
 The official apps stay in the menu; PulseDial is added as the first app. To go back to the official
 firmware, see [Restore the official firmware](#restore-the-official-firmware).
@@ -189,6 +191,8 @@ The upstream README is kept as [README.upstream.md](README.upstream.md).
 
 1. **ブラウザで書き込む**：StopWatch を USB-C で PC につなぎ、Chrome か Edge で
    **https://aigamoid.github.io/pulsedial/** を開いて **Install PulseDial** を押します。
+   ポートは **USB JTAG/serial debug unit**（Mac は `cu.usbmodem…`、Windows は `COM` の番号）を選びます。
+   「Erase」を聞かれたらチェックなしで大丈夫です（Wi-Fi の設定と Spotify のログインが残ります）。
    公式のアプリはメニューに残り、PulseDial がいちばん前に入ります。
 2. **Wi-Fi につなぐ**：StopWatch で PulseDial を開きます。Wi-Fi が未設定なら QR コードが出るので、スマホで読み取り、
    `192.168.4.1` を開いて家の Wi-Fi（2.4 GHz）を選びます。
