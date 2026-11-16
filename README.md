@@ -177,7 +177,8 @@ Source comments in `app_pulsedial` are mostly in Japanese.
 ## License
 
 MIT (see [LICENSE](LICENSE)). Based on M5StopWatch-UserDemo by M5Stack (MIT).
-Includes the QR Code generator library by Project Nayuki (MIT).
+Includes the QR Code generator library by Project Nayuki (MIT). The firmware also contains ESP-IDF (Apache-2.0),
+LVGL, M5GFX (MIT), IPA fonts and more: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The upstream README is kept as [README.upstream.md](README.upstream.md).
 
 ---
