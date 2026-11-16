@@ -191,6 +191,9 @@ public:
     int getAudioSampleRate();
     void audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gain = 30.0f);
     void audioPlay(std::vector<int16_t>& data, bool async = true);
+    // マイクを samples 個 (44.1kHz, モノラル) 読む。たまるまで待つ
+    bool audioReadMic(int16_t* data, std::size_t samples);
+    void audioSetMicGain(float gain);
 
     struct AudioSpectrumFrame {
         static constexpr std::size_t bandCount = 20;

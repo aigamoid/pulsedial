@@ -152,6 +152,14 @@ public:
         }
     }
 
+    // _mutex は取らない。読み取りは音がたまるまで待つので、その間ずっと握っていると、
+    // ボタンの効果音 (play) などが待たされ続けてメインのループが止まる。
+    // 受信 (RX) は再生 (TX) とは別の通り道なので、同時に動いても困らない。
+    bool readMic(int16_t* data, std::size_t samples)
+    {
+        return esp_codec_dev_read(_codec_dev, data, samples * sizeof(int16_t)) == ESP_OK;
+    }
+
 private:
     void _task_entry()
     {
@@ -484,6 +492,16 @@ void Hal::audioRecord(std::vector<int16_t>& data, uint16_t durationMs, float gai
 void Hal::audioPlay(std::vector<int16_t>& data, bool async)
 {
     _audio_codec.play(data, async);
+}
+
+bool Hal::audioReadMic(int16_t* data, std::size_t samples)
+{
+    return _audio_codec.readMic(data, samples);
+}
+
+void Hal::audioSetMicGain(float gain)
+{
+    _audio_codec.setMicGain(gain);
 }
 
 int Hal::getAudioSampleRate()

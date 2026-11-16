@@ -1,0 +1,15 @@
+diff --git a/src/lgfx/v1/platforms/common.hpp b/src/lgfx/v1/platforms/common.hpp
+index 1a64330..75c45a6 100644
+--- a/src/lgfx/v1/platforms/common.hpp
++++ b/src/lgfx/v1/platforms/common.hpp
+@@ -140,7 +140,9 @@ namespace lgfx
+       length = (length + 3) & ~3;
+       _flip = !_flip;
+ 
+-      if (_length[_flip] < length || _length[_flip] > length + 64)
++      // PulseDial: never shrink. Sending dozens of rects of different widths per frame freed and re-allocated
++      // DMA memory each time, fragmenting internal RAM until the allocation failed and it wrote to NULL. Grow only.
++      if (_length[_flip] < length)
+       {
+         if (_buffer[_flip]) { heap_free(_buffer[_flip]); }
+         _buffer[_flip] = (uint8_t*)heap_alloc_dma(length);

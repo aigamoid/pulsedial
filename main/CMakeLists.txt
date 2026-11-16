@@ -25,3 +25,6 @@ idf_component_register(
     EMBED_TXTFILES
         "hal/utils/config_ap/assets/badge_config_ap.html"
 )
+# PulseDial: the visualizer and the screen are drawn every frame, so optimize these files for speed (the rest is -Og)
+set_source_files_properties(apps/app_pulsedial/SpotifyViz.cpp PROPERTIES COMPILE_OPTIONS "-O2")
+set_source_files_properties(apps/app_pulsedial/GlassUi.cpp PROPERTIES COMPILE_OPTIONS "-O2")

@@ -30,6 +30,7 @@ extern "C" void app_main(void)
 
     // Install apps
     GetMooncake().installApp(std::make_unique<AppLauncher>());
+    GetMooncake().installApp(std::make_unique<AppPulseDial>());  // PulseDial: first in the menu
     GetMooncake().installApp(std::make_unique<AppFluidBox>());
     GetMooncake().installApp(std::make_unique<AppAlarmClock>());
     GetMooncake().installApp(std::make_unique<AppWatchFace>());
