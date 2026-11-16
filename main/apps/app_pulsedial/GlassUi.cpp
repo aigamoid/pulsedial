@@ -961,19 +961,11 @@ void GlassUi::setArt(const uint16_t* rgb565, int w, int h)
     }
     _bgDirty   = true;
     _baseDirty = true;
-    if (_mode == Mode::Player) _fadeReq = true;
+    // ドット絵 → 本物は、切り替えの演出なしでそのまま替える (ぼやけを通すと毎コマ画面全体を描き直して重かった)。
+    // 曲どうし (本物 → 本物) は 0.5 秒でふわっと
+    const bool fromPixel = _ledGrid == kPixGrid;
+    if (_mode == Mode::Player && !fromPixel) _fadeReq = true;
     _fadeDur = 0.5f;
-    _blurFade = false;
-    if (_hasArt && _ledGrid == kPixGrid && _mode == Mode::Player) {  // ドット絵 → (ぼやけて) → 本物 を 1 回で
-        memcpy(_blurRGB, _ledRGB, sizeof(_blurRGB));
-        for (int x = 0; x < kSize; ++x) {  // 16 マスの色をなめらかにつなぐための、x ごとの左の粒と割合
-            const float f = clampf((x + 0.5f) * kPixGrid / kSize - 0.5f, 0, kPixGrid - 1.001f);
-            _blurX0[x]    = static_cast<int16_t>(f);
-            _blurXT[x]    = static_cast<uint8_t>((f - static_cast<int>(f)) * 255);
-        }
-        _blurFade = true;
-        _fadeDur  = 0.7f;
-    }
     _ledGrid     = 0;
     _refineStage = 0;
 }
@@ -2557,18 +2549,11 @@ void GlassUi::frame(float dt, const Frame& micIn, uint16_t* fb, int stride, int 
             uint16_t* f;
             int stride, a;
             bool fading;
-            int a1, a2;  // ぼやけを通すとき: 前の画面 → ぼやけ (a1)、→ 本物 (a2)
-            bool blur;
-        } fc{this, f, stride, 0, fading, 0, 0, false};
+        } fc{this, f, stride, 0, fading};
         if (fading) {  // 曲が変わった: 前の画面から新しい画面へ、ふわっと
             _fadeT        = std::min(1.0f, _fadeT + dt / std::max(0.05f, _fadeDur));
             const float e = _fadeT * _fadeT * (3 - 2 * _fadeT);
             fc.a          = static_cast<int>(e * 256);
-            if (_blurFade) {
-                fc.blur = true;
-                fc.a1   = static_cast<int>(smooth(0.0f, 0.55f, _fadeT) * 256);
-                fc.a2   = static_cast<int>(smooth(0.35f, 1.0f, _fadeT) * 256);
-            }
         }
         split(
             [](void* arg, int part) {
@@ -2580,31 +2565,6 @@ void GlassUi::frame(float dt, const Frame& micIn, uint16_t* fb, int stride, int 
                     if (!c->fading) continue;
                     const uint16_t* o = c->ui->_old + y * kSize;
                     const int a       = c->a;
-                    if (c->blur) {  // ドット絵の画面 → 16 マスをなめらかにつないだぼやけ → 本物
-                        GlassUi* ui    = c->ui;
-                        const float fy = clampf((y - ui->_oy + 0.5f) * kPixGrid / kSize - 0.5f, 0, kPixGrid - 1.001f);
-                        const int y0   = static_cast<int>(fy);
-                        const int ty   = static_cast<int>((fy - y0) * 256);
-                        const uint8_t* r0 = ui->_blurRGB + y0 * kPixGrid * 3;
-                        const uint8_t* r1 = r0 + kPixGrid * 3;
-                        for (int x = 0; x < kSize; ++x) {
-                            const int bx = clampi(x - ui->_ox, 0, kSize - 1);
-                            const int x0 = ui->_blurX0[bx], tx = ui->_blurXT[bx];
-                            int bc[3];
-                            for (int k = 0; k < 3; ++k) {
-                                const int top = r0[x0 * 3 + k] * 256 + (r0[(x0 + 1) * 3 + k] - r0[x0 * 3 + k]) * tx;
-                                const int bot = r1[x0 * 3 + k] * 256 + (r1[(x0 + 1) * 3 + k] - r1[x0 * 3 + k]) * tx;
-                                bc[k]         = (top + (((bot - top) * ty) >> 8)) >> 8;
-                            }
-                            int r0c, g0c, b0c, r1c, g1c, b1c;
-                            unpack(o[x], r0c, g0c, b0c);
-                            unpack(row[x], r1c, g1c, b1c);
-                            const int pr = r0c + (((bc[0] - r0c) * c->a1) >> 8), pg = g0c + (((bc[1] - g0c) * c->a1) >> 8),
-                                      pb = b0c + (((bc[2] - b0c) * c->a1) >> 8);
-                            row[x] = pack(pr + (((r1c - pr) * c->a2) >> 8), pg + (((g1c - pg) * c->a2) >> 8), pb + (((b1c - pb) * c->a2) >> 8));
-                        }
-                        continue;
-                    }
                     for (int x = 0; x < kSize; ++x) {
                         if (o[x] == row[x]) continue;
                         int r0, g0, b0, r1, g1, b1;
@@ -2618,7 +2578,6 @@ void GlassUi::frame(float dt, const Frame& micIn, uint16_t* fb, int stride, int 
         if (fading) {
             if (_fadeT >= 1) {
                 _fullSend = true;  // 切り替えが終わったら、動く部分も入れて描き直す
-                _blurFade = false;
             }
         }
         for (int z = 0; z < kZones; ++z) {

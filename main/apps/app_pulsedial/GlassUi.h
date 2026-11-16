@@ -284,11 +284,6 @@ private:
     uint8_t _ledRGB[64 * 64 * 3];
     int _ledGrid      = 0;
     int _refineStage  = 0;  // (使わない: 32 → 64 と細かくするのは重かった)
-    // ドット絵 → 本物: 粒がにじんでぼやけた絵 (16 マスの色をなめらかにつなぐ) を通って、本物がはっきり出る
-    bool _blurFade = false;
-    uint8_t _blurRGB[kPixGrid * kPixGrid * 3];
-    int16_t _blurX0[kSize];
-    uint8_t _blurXT[kSize];
     float _fadeDur    = 0.5f;
     float _titleIn    = 1.0f;  // 曲が替わってからの新しい曲名の濃さ (切り替え中に、前の曲名と重ならないように)
     int _ledLutGrid   = -1;
